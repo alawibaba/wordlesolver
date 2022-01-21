@@ -139,10 +139,11 @@ while True:
         else:
             old_constraints[c] = (max(old_min, matchCounts[c] + wrongSpotCounts[c]), min(old_max, matchCounts[c] + wrongSpotCounts[c] + unmatched))
     
-    print(matchCounts)
-    print(wrongSpotCounts)
-    print(wrongLetterCounts)
-    print(serialize(old_state, old_constraints))
-    print(80*"-")
+#    DEBUG print lines
+#    print(matchCounts)
+#    print(wrongSpotCounts)
+#    print(wrongLetterCounts)
+#    print(serialize(old_state, old_constraints))
+#    print(80*"-")
 
 print()
