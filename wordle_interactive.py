@@ -2,6 +2,7 @@
 
 from math import log
 from collections import defaultdict
+from tqdm import tqdm
 
 raw_words = open("wordList")
 
@@ -88,22 +89,22 @@ hardMode = False
 
 while True:
     if len(firstGuesses) == 0:
-        candidates = []
+        candidates = set([])
         for word in words:
             if not match(word, old_state, old_constraints):
                 continue
-            candidates.append(word)
+            candidates.add(word)
             print(word)
         
-        bestscore, bestword = 0, None
-        for word in {False: words, True: candidates}[hardMode]:
-            my_score = entropy(word, candidates, old_state, old_constraints)
+        bestscore, bestword = (0, False), None
+        for word in tqdm({False: words, True: candidates}[hardMode]):
+            my_score = entropy(word, candidates, old_state, old_constraints), word in candidates
             if my_score > bestscore:
                 bestscore = my_score
                 bestword = word
 
         if len(candidates) == 1:
-            print("The answer is ", candidates[0])
+            print("The answer is ", candidates.pop())
             break
     else:
         bestword, firstGuesses = firstGuesses[0], firstGuesses[1:]
