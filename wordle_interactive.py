@@ -95,7 +95,7 @@ while True:
                 continue
             candidates.add(word)
             print(word)
-        
+
         bestscore, bestword = (0, False), None
         for word in tqdm({False: words, True: candidates}[hardMode]):
             my_score = entropy(word, candidates, old_state, old_constraints), word in candidates
@@ -110,7 +110,11 @@ while True:
         bestword, firstGuesses = firstGuesses[0], firstGuesses[1:]
 
     response = input("Please guess '%s' and enter the response: " % bestword).strip()
-    guess = bestword
+
+    if len(response.split()) == 2:
+        guess, response = response.split()
+    else:
+        guess = bestword
 
     wrongSpotCounts = {c: 0 for c in lowercase}
     wrongLetterCounts = {c: 0 for c in lowercase}
@@ -139,7 +143,7 @@ while True:
             old_constraints[c] = (matchCounts[c] + wrongSpotCounts[c], matchCounts[c] + wrongSpotCounts[c])
         else:
             old_constraints[c] = (max(old_min, matchCounts[c] + wrongSpotCounts[c]), min(old_max, matchCounts[c] + wrongSpotCounts[c] + unmatched))
-    
+
 #    DEBUG print lines
 #    print(matchCounts)
 #    print(wrongSpotCounts)
