@@ -3,25 +3,37 @@
 from math import log
 from collections import defaultdict
 from tqdm import tqdm
-
-raw_words = open("wordList")
+from joblib import Parallel, delayed
+import json
 
 LENGTH = 5
+PROCESSES = 36
 lowercase = 'abcdefghijklmnopqrstuvwxyz'
+CACHE_FILE = "wordle.cache"
 
-words = []
-for raw_word in raw_words:
-    word = raw_word.strip()
-    if len(word) != LENGTH:
-        continue
-    bad_word = False
-    for c in word:
-        if c not in lowercase:
-            bad_word = True
-            break
-    if bad_word:
-        continue
-    words.append(word)
+def goodWords(raw_words):
+    """
+    Returns a list of words that are of the correct length and only contain
+    lowercase letters. The current word lists already have this property,
+    but this enables you to replace it with your own word list.
+    """
+    words = []
+    for raw_word in raw_words:
+        word = raw_word.strip()
+        if len(word) != LENGTH:
+            continue
+        bad_word = False
+        for c in word:
+            if c not in lowercase:
+                bad_word = True
+                break
+        if bad_word:
+            continue
+        words.append(word)
+    return words
+
+guess_words = goodWords(open("wordList"))
+answer_words = goodWords(open("answerList"))
 
 def postState(truth, guess, old_state, old_constraints):
     new_state = [set(old_state_spot) for old_state_spot in old_state]
@@ -79,76 +91,85 @@ def entropy(guess, candidates, old_state, old_constraints):
     for pnum in count.values():
         p = pnum / total
         score -= p * log(p)
-    return score
+    return score, guess
 
-old_state = [set(lowercase) for _ in range(LENGTH)]
-old_constraints = {c: (0, LENGTH) for c in lowercase}
+if __name__ == '__main__':
+    old_state = [set(lowercase) for _ in range(LENGTH)]
+    old_constraints = {c: (0, LENGTH) for c in lowercase}
 
-firstGuesses = ['tares']
-hardMode = False
+    try:
+        cache = json.load(open(CACHE_FILE, 'r'))
+        hardMode = True
+        stateKey = ''
+        while True:
+            if stateKey in cache:
+                bestword = cache[stateKey]
+            else:
+                candidates = set([])
+                for word in answer_words:
+                    if not match(word, old_state, old_constraints):
+                        continue
+                    candidates.add(word)
+                    print(word)
 
-while True:
-    if len(firstGuesses) == 0:
-        candidates = set([])
-        for word in words:
-            if not match(word, old_state, old_constraints):
-                continue
-            candidates.add(word)
-            print(word)
+                if len(candidates) == 0:
+                    print("No candidates left! ABORT!")
+                    break
 
-        bestscore, bestword = (0, False), None
-        for word in tqdm({False: words, True: candidates}[hardMode]):
-            my_score = entropy(word, candidates, old_state, old_constraints), word in candidates
-            if my_score > bestscore:
-                bestscore = my_score
-                bestword = word
+                if hardMode:
+                    new_guess_words = set()
+                    for word in guess_words:
+                        if not match(word, old_state, old_constraints):
+                            continue
+                        new_guess_words.add(word)
+                    guess_words = new_guess_words
 
-        if len(candidates) == 1:
-            print("The answer is ", candidates.pop())
-            break
-    else:
-        bestword, firstGuesses = firstGuesses[0], firstGuesses[1:]
+                # find the word that gives the best entropy --- parallelized with joblib!
+                bestscore, bestword = max(Parallel(n_jobs=PROCESSES)(delayed(entropy)(word, candidates, old_state, old_constraints) for word in tqdm(guess_words)))
 
-    response = input("Please guess '%s' and enter the response: " % bestword).strip()
+                if len(candidates) == 1:
+                    print("The answer is ", candidates.pop())
+                    break
 
-    if len(response.split()) == 2:
-        guess, response = response.split()
-    else:
-        guess = bestword
+                cache[stateKey] = bestword
 
-    wrongSpotCounts = {c: 0 for c in lowercase}
-    wrongLetterCounts = {c: 0 for c in lowercase}
-    matchCounts = {c: 0 for c in lowercase}
-    unmatched = LENGTH
-    for i in range(LENGTH):
-        if response[i] == '0':
-            try:
-                old_state[i].remove(guess[i])
-            except KeyError:
-                pass
-            wrongLetterCounts[guess[i]] += 1
-        elif response[i] == '1':
-            try:
-                old_state[i].remove(guess[i])
-            except KeyError:
-                pass
-            wrongSpotCounts[guess[i]] += 1
-        else:
-            old_state[i] = set([guess[i]])
-            matchCounts[guess[i]] += 1
-            unmatched -= 1
-    for c in lowercase:
-        old_min, old_max = old_constraints[c]
-        if wrongLetterCounts[c] > 0:
-            old_constraints[c] = (matchCounts[c] + wrongSpotCounts[c], matchCounts[c] + wrongSpotCounts[c])
-        else:
-            old_constraints[c] = (max(old_min, matchCounts[c] + wrongSpotCounts[c]), min(old_max, matchCounts[c] + wrongSpotCounts[c] + unmatched))
+            response = input("Please guess '%s' and enter the response: " % bestword).strip()
 
-#    DEBUG print lines
-#    print(matchCounts)
-#    print(wrongSpotCounts)
-#    print(wrongLetterCounts)
-#    print(serialize(old_state, old_constraints))
-#    print(80*"-")
+            if len(response.split()) == 2:
+                guess, response = response.split()
+            else:
+                guess = bestword
 
-print()
+            stateKey = stateKey + guess.lower() + response
+
+            wrongSpotCounts = {c: 0 for c in lowercase}
+            wrongLetterCounts = {c: 0 for c in lowercase}
+            matchCounts = {c: 0 for c in lowercase}
+            unmatched = LENGTH
+            for i in range(LENGTH):
+                if response[i] == '0':
+                    try:
+                        old_state[i].remove(guess[i])
+                    except KeyError:
+                        pass
+                    wrongLetterCounts[guess[i]] += 1
+                elif response[i] == '1':
+                    try:
+                        old_state[i].remove(guess[i])
+                    except KeyError:
+                        pass
+                    wrongSpotCounts[guess[i]] += 1
+                else:
+                    old_state[i] = set([guess[i]])
+                    matchCounts[guess[i]] += 1
+                    unmatched -= 1
+            for c in lowercase:
+                old_min, old_max = old_constraints[c]
+                if wrongLetterCounts[c] > 0:
+                    old_constraints[c] = (matchCounts[c] + wrongSpotCounts[c], matchCounts[c] + wrongSpotCounts[c])
+                else:
+                    old_constraints[c] = (max(old_min, matchCounts[c] + wrongSpotCounts[c]), min(old_max, matchCounts[c] + wrongSpotCounts[c] + unmatched))
+        print()
+    finally:
+        # update the cache
+        json.dump(cache, open(CACHE_FILE, 'w'))
