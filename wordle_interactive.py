@@ -81,7 +81,7 @@ def match(truth, state, constraints):
 def serialize(state, constraints):
     return ",".join(["".join(sorted(list(state_spot))) for state_spot in state]) + ":" + ",".join(["(%d, %d)" % constraints[c] for c in lowercase])
 
-def entropy(guess, candidates, old_state, old_constraints):
+def entropy(guess, candidates, old_state, old_constraints, bonus=False):
     total = 0
     count = defaultdict(lambda: 0)
     for candidate in candidates:
@@ -91,7 +91,7 @@ def entropy(guess, candidates, old_state, old_constraints):
     for pnum in count.values():
         p = pnum / total
         score -= p * log(p)
-    return score, guess
+    return (score, bonus), guess
 
 if __name__ == '__main__':
     old_state = [set(lowercase) for _ in range(LENGTH)]
@@ -125,7 +125,7 @@ if __name__ == '__main__':
                     guess_words = new_guess_words
 
                 # find the word that gives the best entropy --- parallelized with joblib!
-                bestscore, bestword = max(Parallel(n_jobs=PROCESSES)(delayed(entropy)(word, candidates, old_state, old_constraints) for word in tqdm(guess_words)))
+                bestscore, bestword = max(Parallel(n_jobs=PROCESSES)(delayed(entropy)(word, candidates, old_state, old_constraints, bonus=word in candidates) for word in tqdm(guess_words)))
 
                 if len(candidates) == 1:
                     print("The answer is ", candidates.pop())
